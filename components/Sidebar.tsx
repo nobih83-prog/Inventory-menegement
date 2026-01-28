@@ -11,7 +11,8 @@ import {
   Settings,
   LogOut,
   ChevronRight,
-  X
+  X,
+  Truck
 } from 'lucide-react';
 import { useAuth } from '../App';
 
@@ -26,6 +27,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/', end: true },
     { name: 'Inventory', icon: Package, path: '/inventory' },
+    { name: 'Purchases', icon: Truck, path: '/purchases' },
     { name: 'Sales', icon: ShoppingCart, path: '/sales' },
     { name: 'Customers', icon: Users, path: '/customers' },
     { name: 'Expenses', icon: Receipt, path: '/expenses' },

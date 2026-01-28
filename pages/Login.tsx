@@ -10,45 +10,69 @@ const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const { login } = useAuth();
+  const { login, allUsers } = useAuth();
   const navigate = useNavigate();
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Optimized for deployment: Accepts your email and a master password
-    // In a real deployment, this would connect to your Firebase/Supabase auth
-    login({
-      id: 'admin-123',
-      email: email || 'your-email@example.com',
-      businessName: 'Nashwa Cafe & Bistro',
-      role: UserRole.OWNER,
-      name: 'Business Admin'
-    });
+    const loginEmail = email || 'your-email@example.com';
+    
+    // Check if user exists in registry
+    const existingUser = allUsers.find(u => u.email === loginEmail);
+    
+    if (existingUser) {
+      login(existingUser);
+    } else {
+      login({
+        id: 'admin-' + Math.random().toString(36).substr(2, 5),
+        email: loginEmail,
+        businessName: 'Nashwa Cafe & Bistro',
+        role: UserRole.OWNER,
+        name: 'Business Admin'
+      });
+    }
     navigate('/');
   };
 
   const handleCustomerLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    login({
-      id: 'cust-456',
-      email: 'customer@example.com',
-      businessName: 'Nashwa Cafe & Bistro',
-      role: UserRole.CUSTOMER,
-      name: 'Valued Customer',
-      phone: phone || '+880 1XXX-XXXXXX'
-    });
+    const loginPhone = phone || '+880 1XXX-XXXXXX';
+    
+    // Look up by phone if available
+    const existingUser = allUsers.find(u => u.phone === loginPhone);
+    
+    if (existingUser) {
+      login(existingUser);
+    } else {
+      login({
+        id: 'cust-' + Math.random().toString(36).substr(2, 5),
+        email: 'customer-' + Math.random().toString(36).substr(2, 3) + '@example.com',
+        businessName: 'Nashwa Cafe & Bistro',
+        role: UserRole.CUSTOMER,
+        name: 'Valued Customer',
+        phone: loginPhone
+      });
+    }
     navigate('/portal');
   };
 
   const handleSuperAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    login({
-      id: 'super-001',
-      email: email || 'master@nashwa.io',
-      businessName: 'Nashwa Platforms HQ',
-      role: UserRole.SUPER_ADMIN,
-      name: 'Platform Overseer'
-    });
+    const loginEmail = email || 'master@nashwa.io';
+    
+    const existingUser = allUsers.find(u => u.email === loginEmail);
+    
+    if (existingUser) {
+      login(existingUser);
+    } else {
+      login({
+        id: 'super-001',
+        email: loginEmail,
+        businessName: 'Nashwa Platforms HQ',
+        role: UserRole.SUPER_ADMIN,
+        name: 'Platform Overseer'
+      });
+    }
     navigate('/platform-control');
   };
 

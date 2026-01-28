@@ -29,7 +29,7 @@ import { useAuth, useCurrency, useNotifications } from '../App';
 type SettingsTab = 'business' | 'account' | 'notifications' | 'security' | 'appearance' | 'database';
 
 const Settings: React.FC = () => {
-  const { user, login } = useAuth();
+  const { user, updateGlobalUser } = useAuth();
   const { currency, setCurrency } = useCurrency();
   const { addNotification } = useNotifications();
   const [activeTab, setActiveTab] = useState<SettingsTab>('business');
@@ -50,7 +50,7 @@ const Settings: React.FC = () => {
     setTimeout(() => {
       if (activeTab === 'account') {
         if (user) {
-          login({
+          updateGlobalUser({
             ...user,
             name: accountName,
             phone: accountPhone,

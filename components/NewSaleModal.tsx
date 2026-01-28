@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { X, Search, Plus, Minus, ShoppingCart, CreditCard, DollarSign, Wallet, Trash2, CheckCircle2 } from 'lucide-react';
-import { useCurrency, useSalesData, useAuth, useNotifications } from '../App';
+import { useCurrency, useSalesData, useAuth, useNotifications, useInventoryData } from '../App';
 
 interface Product {
   id: string;
@@ -26,26 +26,28 @@ const NewSaleModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { addSale } = useSalesData();
   const { user } = useAuth();
   const { addNotification } = useNotifications();
-
-  const mockInventory: Product[] = [
-    { id: '1', name: 'Premium Coffee Beans (1kg)', category: 'Coffee', price: 25.00, stock: 15 },
-    { id: '2', name: 'Milk 1L (Whole)', category: 'Dairy', price: 1.50, stock: 120 },
-    { id: '3', name: 'Croissant (Plain)', category: 'Bakery', price: 3.50, stock: 5 },
-    { id: '4', name: 'Espresso Machine Cleaner', category: 'Maintenance', price: 18.00, stock: 12 },
-    { id: '5', name: 'Paper Cups (Large)', category: 'Supplies', price: 0.15, stock: 500 },
-  ];
+  const { inventory, deductStock } = useInventoryData();
 
   const filteredProducts = useMemo(() => {
-    return mockInventory.filter(p => 
+    return inventory.filter(p => 
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      p.category.toLowerCase().includes(searchTerm.toLowerCase())
+      p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [searchTerm]);
+  }, [searchTerm, inventory]);
 
   const addToCart = (product: Product) => {
+    if (product.stock <= 0) {
+      addNotification({ title: 'Out of Stock', message: `${product.name} has no remaining balance.`, type: 'warning' });
+      return;
+    }
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
+        if (existing.quantity >= product.stock) {
+          addNotification({ title: 'Limit Reached', message: `Only ${product.stock} units available for ${product.name}.`, type: 'info' });
+          return prev;
+        }
         return prev.map(item => 
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
@@ -57,7 +59,12 @@ const NewSaleModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const updateQuantity = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
+        const productSource = inventory.find(p => p.id === id);
         const newQty = Math.max(1, item.quantity + delta);
+        if (productSource && newQty > productSource.stock) {
+           addNotification({ title: 'Stock Limit', message: `No more units available for this item.`, type: 'info' });
+           return item;
+        }
         return { ...item, quantity: newQty };
       }
       return item;
@@ -83,18 +90,23 @@ const NewSaleModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       minute: '2-digit' 
     });
 
+    const saleItems = cart.map(item => ({ productId: item.id, quantity: item.quantity, price: item.price }));
+
     const newRecord = {
       id: orderId,
       userId: user?.id || 'admin-123',
       customerName: customerName || 'Walk-in Customer',
-      items: cart.map(item => ({ productId: item.id, quantity: item.quantity, price: item.price })),
+      items: saleItems,
       totalAmount: total,
       paymentMethod,
       createdAt: timestamp,
       status: 'Success' as const
     };
 
+    // Global Data updates
     addSale(newRecord);
+    deductStock(saleItems);
+
     addNotification({ 
       title: 'Sale Successful', 
       message: `Order ${orderId} completed for ${currencySymbol}${total.toFixed(2)}.`, 
@@ -152,7 +164,6 @@ const NewSaleModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                   placeholder="Scan SKU or search item..." 
                   className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all text-sm font-bold"
                   value={searchTerm}
-                  // Fixed: Changed setSearchQuery to setSearchTerm
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
@@ -174,7 +185,7 @@ const NewSaleModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <button
                   key={product.id}
                   onClick={() => addToCart(product)}
-                  className="bg-white p-6 rounded-[2rem] border border-slate-200 text-left hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-50 transition-all group active:scale-95"
+                  className={`bg-white p-6 rounded-[2rem] border-2 text-left transition-all group active:scale-95 ${product.stock <= 0 ? 'opacity-40 border-slate-100' : 'border-slate-100 hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-50'}`}
                 >
                   <div className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-2 px-1 border-l-2 border-indigo-500">{product.category}</div>
                   <div className="font-black text-slate-900 text-base mb-3 leading-tight truncate">{product.name}</div>

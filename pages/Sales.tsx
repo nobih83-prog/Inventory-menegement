@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingBag, CreditCard, DollarSign, Calendar, Download, Printer, Ban, Trash2, Search as SearchIcon } from 'lucide-react';
+import { ShoppingBag, CreditCard, DollarSign, Calendar, Download, Printer, Ban, Trash2, Search as SearchIcon, X, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
-import { useSearch, useSaleAction, useCurrency, useAuth, useSalesData } from '../App';
+import { useSearch, useSaleAction, useCurrency, useAuth, useSalesData, SaleRecord } from '../App';
 
 const Sales: React.FC = () => {
   const location = useLocation();
@@ -14,6 +14,10 @@ const Sales: React.FC = () => {
 
   // Highlight State
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  
+  // Void Confirmation State
+  const [saleToVoid, setSaleToVoid] = useState<SaleRecord | null>(null);
+  const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
 
   useEffect(() => {
     const highlightId = (location.state as any)?.highlightId;
@@ -150,6 +154,19 @@ const Sales: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  const handleInitiateVoid = (sale: SaleRecord) => {
+    setSaleToVoid(sale);
+    setIsVoidModalOpen(true);
+  };
+
+  const handleConfirmVoid = () => {
+    if (saleToVoid) {
+      voidSale(saleToVoid.id);
+      setIsVoidModalOpen(false);
+      setSaleToVoid(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -248,7 +265,7 @@ const Sales: React.FC = () => {
                       </button>
                       {sale.status === 'Success' && (
                         <button 
-                          onClick={() => voidSale(sale.id)}
+                          onClick={() => handleInitiateVoid(sale)}
                           className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-white rounded-xl transition-all shadow-sm"
                           title="Void Transaction"
                         >
@@ -273,6 +290,44 @@ const Sales: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Void Confirmation Modal */}
+      {isVoidModalOpen && saleToVoid && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-10 text-center">
+              <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <ShieldAlert size={40} className="animate-pulse" />
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 mb-2">Void Order?</h3>
+              <p className="text-slate-500 font-medium mb-8 px-4">
+                Are you sure you want to void <span className="font-bold text-slate-900">{saleToVoid.id}</span> for <span className="font-bold text-rose-600">{currencySymbol}{saleToVoid.totalAmount.toFixed(2)}</span>? 
+                This will reverse the transaction and log a void record.
+              </p>
+              
+              <div className="flex items-center space-x-4">
+                <button 
+                  onClick={() => setIsVoidModalOpen(false)}
+                  className="flex-1 px-6 py-4 rounded-2xl bg-slate-100 text-slate-600 font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleConfirmVoid}
+                  className="flex-1 px-6 py-4 rounded-2xl bg-rose-600 text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-rose-100 hover:bg-rose-700 transition-all"
+                >
+                  Confirm Void
+                </button>
+              </div>
+            </div>
+            <div className="bg-rose-50 px-8 py-4 text-center">
+              <p className="text-[10px] font-bold text-rose-600 uppercase tracking-[0.2em]">
+                System Log: Transaction Reversal Mode
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

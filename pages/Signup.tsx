@@ -18,7 +18,7 @@ const Signup: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Simulate complex registration process
+    // Create new owner profile
     const newUser = {
       id: `NS-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
       email: email,
@@ -26,13 +26,10 @@ const Signup: React.FC = () => {
       phone: phone,
       businessName: businessName,
       role: UserRole.OWNER,
-      // In a real app, supplierId would be stored in the business profile
     };
 
-    // Auto-login after successful registration
+    // login function already handles adding to the global registry
     login(newUser);
-    
-    // Redirect to dashboard
     navigate('/');
   };
 

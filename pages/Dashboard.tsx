@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -29,7 +29,7 @@ import {
   Area
 } from 'recharts';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useSearch, useCurrency, useNotifications, useAuth } from '../App';
+import { useSearch, useCurrency, useNotifications, useAuth, useInventoryData } from '../App';
 
 const mockSalesData = [
   { name: 'Mon', sales: 4000 },
@@ -39,12 +39,6 @@ const mockSalesData = [
   { name: 'Fri', sales: 1890 },
   { name: 'Sat', sales: 2390 },
   { name: 'Sun', sales: 3490 },
-];
-
-const initialLowStockItems = [
-  { id: 'ls1', name: 'Organic Coffee Beans', stock: 5, min: 20, supplierId: 'SUP-BN-402', category: 'Coffee' },
-  { id: 'ls2', name: 'Milk Carton 1L', stock: 12, min: 50, supplierId: 'SUP-DK-109', category: 'Dairy' },
-  { id: 'ls3', name: 'Paper Cups 50pk', stock: 8, min: 30, supplierId: 'SUP-SUP-771', category: 'Supplies' },
 ];
 
 const recentTransactions = [
@@ -76,11 +70,15 @@ const Dashboard: React.FC = () => {
   const { currencySymbol } = useCurrency();
   const { addNotification } = useNotifications();
   const { user } = useAuth();
+  const { inventory, incrementStock } = useInventoryData();
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Low stock management state
-  const [lowStockItems, setLowStockItems] = useState(initialLowStockItems);
+  // Derived low stock items from REAL inventory
+  const lowStockItems = useMemo(() => {
+    return inventory.filter(item => item.stock < item.minStockLevel);
+  }, [inventory]);
+
   const [orderingItems, setOrderingItems] = useState<string[]>([]);
   const [orderedItems, setOrderedItems] = useState<string[]>([]);
   const [focusedAlertItem, setFocusedAlertItem] = useState<any>(null);
@@ -96,20 +94,30 @@ const Dashboard: React.FC = () => {
     }
   }, [location.state, lowStockItems]);
 
-  const handleOrder = (itemId: string, itemName: string, supplierId: string) => {
+  const handleOrder = (itemId: string, itemName: string, minLevel: number, currentStock: number) => {
     setOrderingItems(prev => [...prev, itemId]);
     
+    // Simulate procurement process
     setTimeout(() => {
+      // Calculate how much to add (enough to clear alert + buffer)
+      const restockAmount = Math.max(20, (minLevel - currentStock) + Math.ceil(minLevel * 0.5));
+      
+      // Update the REAL global state
+      incrementStock(itemId, restockAmount);
+
       setOrderingItems(prev => prev.filter(id => id !== itemId));
       setOrderedItems(prev => [...prev, itemId]);
       
       addNotification({
-        title: 'Restock Requested',
-        message: `PO generated for ${itemName}. Click to view & print.`,
+        title: 'Restock Completed',
+        message: `${itemName} stock increased by ${restockAmount}.`,
         type: 'success',
-        path: '/',
-        targetId: itemId
       });
+      
+      // Clean up "ordered" state after 5 seconds
+      setTimeout(() => {
+        setOrderedItems(prev => prev.filter(id => id !== itemId));
+      }, 5000);
     }, 1500);
   };
 
@@ -151,8 +159,8 @@ const Dashboard: React.FC = () => {
           
           <div class="info-grid">
             <div>
-              <div class="section-label">To Supplier</div>
-              <div class="section-value">${item.supplierId}</div>
+              <div class="section-label">Supplier Ref</div>
+              <div class="section-value">System Generated PO</div>
               <div style="font-size: 12px; color: #666; margin-top: 4px;">Verified Supply Chain Partner</div>
             </div>
             <div>
@@ -177,7 +185,7 @@ const Dashboard: React.FC = () => {
                 <td><strong>${item.name}</strong></td>
                 <td>${item.category || 'General'}</td>
                 <td>${item.stock} Units</td>
-                <td>Restock to ${item.min}+ Units</td>
+                <td>Restock to ${item.minStockLevel}+ Units</td>
               </tr>
             </tbody>
           </table>
@@ -216,10 +224,12 @@ const Dashboard: React.FC = () => {
     printWindow.document.close();
   };
 
-  const filteredLowStock = lowStockItems.filter(item => 
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.supplierId.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredLowStock = useMemo(() => {
+    return lowStockItems.filter(item => 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.sku?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [lowStockItems, searchQuery]);
 
   const filteredTransactions = recentTransactions.filter(tr => 
     tr.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -267,7 +277,7 @@ const Dashboard: React.FC = () => {
                    <div className="text-right">
                       <p className="text-[10px] font-black text-rose-200 uppercase tracking-widest mb-1">Current Stock</p>
                       <span className="text-3xl font-black">{focusedAlertItem.stock}</span>
-                      <span className="text-sm font-bold opacity-60 ml-2">/ {focusedAlertItem.min} min</span>
+                      <span className="text-sm font-bold opacity-60 ml-2">/ {focusedAlertItem.minStockLevel} min</span>
                    </div>
                 </div>
               </div>
@@ -277,9 +287,9 @@ const Dashboard: React.FC = () => {
               <div className="grid grid-cols-2 gap-6">
                 <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center">
-                    <Truck size={12} className="mr-2 text-indigo-500" /> Supplier Node
+                    <Truck size={12} className="mr-2 text-indigo-500" /> Catalog Ref
                   </p>
-                  <p className="text-sm font-black text-slate-800">{focusedAlertItem.supplierId}</p>
+                  <p className="text-sm font-black text-slate-800">{focusedAlertItem.sku || 'N/A'}</p>
                 </div>
                 <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center">
@@ -378,11 +388,11 @@ const Dashboard: React.FC = () => {
                       <div className="flex items-center mt-0.5">
                         {isOrdered ? (
                           <span className="text-[10px] text-emerald-700 font-black uppercase flex items-center">
-                            <CheckCircle2 size={10} className="mr-1" /> PO Sent
+                            <CheckCircle2 size={10} className="mr-1" /> Success
                           </span>
                         ) : (
                           <span className="text-xs text-slate-500 font-medium">
-                            Stock: <span className={`font-black ${item.stock < 10 ? 'text-rose-600' : 'text-amber-600'}`}>{item.stock}</span> / Min: {item.min}
+                            Stock: <span className={`font-black ${item.stock < item.minStockLevel ? 'text-rose-600' : 'text-amber-600'}`}>{item.stock}</span> / Min: {item.minStockLevel}
                           </span>
                         )}
                       </div>
@@ -400,7 +410,7 @@ const Dashboard: React.FC = () => {
                       )}
                       
                       <button 
-                        onClick={() => !isOrdering && !isOrdered && handleOrder(item.id, item.name, item.supplierId)}
+                        onClick={() => !isOrdering && !isOrdered && handleOrder(item.id, item.name, item.minStockLevel, item.stock)}
                         disabled={isOrdering || isOrdered}
                         className={`text-[10px] px-3 py-2 rounded-xl border font-black uppercase tracking-tighter transition-all flex flex-col items-center min-w-[70px] justify-center ${
                           isOrdered 
@@ -418,7 +428,7 @@ const Dashboard: React.FC = () => {
                         ) : isOrdered ? (
                           <>
                             <CheckCircle2 size={14} className="mb-0.5" />
-                            Logged
+                            Saved
                           </>
                         ) : (
                           <>
@@ -459,7 +469,7 @@ const Dashboard: React.FC = () => {
                 <th className="px-6 py-4">Customer</th>
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Amount</th>
-                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4 status">Status</th>
                 <th className="px-6 py-4 text-right">Action</th>
               </tr>
             </thead>

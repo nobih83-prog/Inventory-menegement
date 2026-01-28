@@ -44,19 +44,47 @@ const Expenses: React.FC = () => {
   const { addNotification } = useNotifications();
   const { user } = useAuth();
   
-  const [expenses, setExpenses] = useState<ExpenseItem[]>([
-    { id: '1', desc: 'Monthly Rent', category: 'Facilities', amount: 2400.00, date: '2024-05-01' },
-    { id: '2', desc: 'Electricity Bill', category: 'Utilities', amount: 320.50, date: '2024-05-05' },
-    { id: '3', desc: 'Inventory Restock', category: 'Supplies', amount: 1540.20, date: '2024-05-10' },
-    { id: '4', desc: 'Marketing Ads', category: 'Marketing', amount: 500.00, date: '2024-05-12' },
-    { id: '5', desc: 'Staff Training', category: 'Payroll', amount: 200.00, date: '2024-05-14' },
-  ]);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [deleteLogs, setDeleteLogs] = useState<ExpenseDeleteLog[]>([]);
+
+  // Load data from localStorage on mount
+  useEffect(() => {
+    const savedExpenses = localStorage.getItem('nashwa_expenses');
+    if (savedExpenses) {
+      setExpenses(JSON.parse(savedExpenses));
+    } else {
+      // Default initial data if nothing is saved
+      const defaults: ExpenseItem[] = [
+        { id: '1', desc: 'Monthly Rent', category: 'Facilities', amount: 2400.00, date: '2024-05-01' },
+        { id: '2', desc: 'Electricity Bill', category: 'Utilities', amount: 320.50, date: '2024-05-05' },
+        { id: '3', desc: 'Inventory Restock', category: 'Supplies', amount: 1540.20, date: '2024-05-10' },
+        { id: '4', desc: 'Marketing Ads', category: 'Marketing', amount: 500.00, date: '2024-05-12' },
+        { id: '5', desc: 'Staff Training', category: 'Payroll', amount: 200.00, date: '2024-05-14' },
+      ];
+      setExpenses(defaults);
+      localStorage.setItem('nashwa_expenses', JSON.stringify(defaults));
+    }
+
+    const savedLogs = localStorage.getItem('nashwa_expense_logs');
+    if (savedLogs) setDeleteLogs(JSON.parse(savedLogs));
+  }, []);
+
+  // Save to localStorage whenever expenses change
+  useEffect(() => {
+    if (expenses.length > 0) {
+      localStorage.setItem('nashwa_expenses', JSON.stringify(expenses));
+    }
+  }, [expenses]);
+
+  // Save to localStorage whenever logs change
+  useEffect(() => {
+    localStorage.setItem('nashwa_expense_logs', JSON.stringify(deleteLogs));
+  }, [deleteLogs]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<ExpenseItem | null>(null);
-  const [deleteLogs, setDeleteLogs] = useState<ExpenseDeleteLog[]>([]);
   const [otpValue, setOtpValue] = useState(['', '', '', '']);
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [otpError, setOtpError] = useState(false);
@@ -73,8 +101,10 @@ const Expenses: React.FC = () => {
 
   const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newExpense.desc || !newExpense.amount) return;
+
     const expense: ExpenseItem = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substr(2, 9).toUpperCase(),
       desc: newExpense.desc,
       category: newExpense.category,
       amount: parseFloat(newExpense.amount),
@@ -110,7 +140,6 @@ const Expenses: React.FC = () => {
     setOtpValue(['', '', '', '']);
     setOtpError(false);
 
-    // Mock sending OTP
     addNotification({
       title: 'Verification Code',
       message: `Use code ${newOtp} to delete "${exp.desc}".`,
@@ -125,7 +154,6 @@ const Expenses: React.FC = () => {
     setOtpValue(newOtp);
     setOtpError(false);
 
-    // Auto focus next input
     if (value && index < 3) {
       const nextInput = document.getElementById(`otp-${index + 1}`);
       nextInput?.focus();
@@ -135,7 +163,6 @@ const Expenses: React.FC = () => {
   const verifyAndDestroy = () => {
     const enteredOtp = otpValue.join('');
     if (enteredOtp === generatedOtp && expenseToDelete) {
-      // Record the deletion in logs
       const newLog: ExpenseDeleteLog = {
         id: expenseToDelete.id,
         desc: expenseToDelete.desc,
@@ -175,7 +202,6 @@ const Expenses: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header & Stats */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-1">
           <div className="bg-rose-100 p-3 rounded-xl text-rose-600 shadow-inner">
@@ -193,7 +219,7 @@ const Expenses: React.FC = () => {
         <div className="flex items-center space-x-3">
           <button 
             onClick={() => setIsLogsModalOpen(true)}
-            className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-slate-200"
+            className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-slate-200 bg-white"
             title="View Deletion Audit Logs"
           >
             <History size={20} />
@@ -221,7 +247,6 @@ const Expenses: React.FC = () => {
         </div>
       </div>
 
-      {/* Expense List Table */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -361,7 +386,7 @@ const Expenses: React.FC = () => {
         </div>
       )}
 
-      {/* OTP Verification Modal (NO BLUR FOR VISIBILITY) */}
+      {/* OTP Verification Modal */}
       {isOtpModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/40 animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { X, Bell, Info, CheckCircle, AlertTriangle, AlertCircle, ArrowRight } from 'lucide-react';
-import { User, UserRole, Sale } from './types';
+import { User, UserRole, Sale, InventoryItem } from './types';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
@@ -10,6 +10,7 @@ import Inventory from './pages/Inventory';
 import Sales from './pages/Sales';
 import Customers from './pages/Customers';
 import Expenses from './pages/Expenses';
+import Purchases from './pages/Purchases';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
@@ -46,8 +47,10 @@ const GlobalStyle = () => (
 // Auth Context
 interface AuthContextType {
   user: User | null;
+  allUsers: User[];
   login: (user: User) => void;
   logout: () => void;
+  updateGlobalUser: (updatedUser: User) => void;
 }
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const useAuth = () => {
@@ -77,6 +80,20 @@ const SaleContext = createContext<SaleContextType | undefined>(undefined);
 export const useSaleAction = () => {
   const context = useContext(SaleContext);
   if (!context) throw new Error('useSaleAction must be used within a SaleProvider');
+  return context;
+};
+
+// Global Inventory Context
+interface InventoryContextType {
+  inventory: any[];
+  setInventory: React.Dispatch<React.SetStateAction<any[]>>;
+  deductStock: (items: { productId: string, quantity: number }[]) => void;
+  incrementStock: (productId: string, quantity: number) => void;
+}
+const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
+export const useInventoryData = () => {
+  const context = useContext(InventoryContext);
+  if (!context) throw new Error('useInventoryData must be used within an InventoryProvider');
   return context;
 };
 
@@ -249,10 +266,20 @@ const AppLayout = ({ children }: { children?: React.ReactNode }) => {
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isNewSaleModalOpen, setIsNewSaleModalOpen] = useState(false);
   const [currency, setCurrencyState] = useState('BDT');
   const [activeToast, setActiveToast] = useState<Notification | null>(null);
+
+  // Global Inventory State
+  const [inventory, setInventory] = useState<any[]>([
+    { id: '1', name: 'Premium Coffee Beans (1kg)', category: 'Coffee', price: 25.00, stock: 15, minStockLevel: 20, sku: 'CB-PR-01', lastRestocked: 'May 12, 2024' },
+    { id: '2', name: 'Milk 1L (Whole)', category: 'Dairy', price: 1.50, stock: 120, minStockLevel: 40, sku: 'DA-MK-02', lastRestocked: 'May 14, 2024' },
+    { id: '3', name: 'Croissant (Plain)', category: 'Bakery', price: 3.50, stock: 5, minStockLevel: 15, sku: 'BK-CR-01', lastRestocked: 'May 15, 2024' },
+    { id: '4', name: 'Espresso Machine Cleaner', category: 'Maintenance', price: 18.00, stock: 12, minStockLevel: 5, sku: 'MT-EM-01', lastRestocked: 'Apr 28, 2024' },
+    { id: '5', name: 'Paper Cups (Large)', category: 'Supplies', price: 0.15, stock: 500, minStockLevel: 100, sku: 'SP-PC-03', lastRestocked: 'May 01, 2024' },
+  ]);
   
   // Sales Ledger State
   const [sales, setSales] = useState<SaleRecord[]>([
@@ -277,20 +304,51 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedUser = localStorage.getItem('bizgrow_user');
     if (savedUser) setUser(JSON.parse(savedUser));
+    
+    const savedAllUsers = localStorage.getItem('nashwa_user_registry');
+    if (savedAllUsers) setAllUsers(JSON.parse(savedAllUsers));
+
     const savedCurrency = localStorage.getItem('nashwa_currency');
     if (savedCurrency) setCurrencyState(savedCurrency);
+    
     const savedSales = localStorage.getItem('nashwa_sales');
     if (savedSales) setSales(JSON.parse(savedSales));
+    
+    const savedInventory = localStorage.getItem('nashwa_inventory');
+    if (savedInventory) setInventory(JSON.parse(savedInventory));
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('nashwa_inventory', JSON.stringify(inventory));
+  }, [inventory]);
+
+  useEffect(() => {
+    localStorage.setItem('nashwa_user_registry', JSON.stringify(allUsers));
+  }, [allUsers]);
 
   const login = (userData: User) => {
     setUser(userData);
     localStorage.setItem('bizgrow_user', JSON.stringify(userData));
+    
+    // Ensure the user is in the registry
+    setAllUsers(prev => {
+      const exists = prev.find(u => u.email === userData.email);
+      if (exists) {
+        return prev.map(u => u.email === userData.email ? userData : u);
+      }
+      return [...prev, userData];
+    });
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('bizgrow_user');
+  };
+
+  const updateGlobalUser = (updatedUser: User) => {
+    setUser(updatedUser);
+    localStorage.setItem('bizgrow_user', JSON.stringify(updatedUser));
+    setAllUsers(prev => prev.map(u => u.email === updatedUser.email ? updatedUser : u));
   };
 
   const setCurrency = (c: string) => {
@@ -341,44 +399,78 @@ const App: React.FC = () => {
     localStorage.setItem('nashwa_sales', JSON.stringify(newSales));
   };
 
+  const deductStock = (items: { productId: string, quantity: number }[]) => {
+    setInventory(prev => prev.map(invItem => {
+      const soldItem = items.find(i => i.productId === invItem.id);
+      if (soldItem) {
+        return { ...invItem, stock: Math.max(0, invItem.stock - soldItem.quantity) };
+      }
+      return invItem;
+    }));
+  };
+
+  const incrementStock = (productId: string, quantity: number) => {
+    setInventory(prev => prev.map(invItem => {
+      if (invItem.id === productId) {
+        return { ...invItem, stock: invItem.stock + quantity, lastRestocked: new Date().toLocaleDateString() };
+      }
+      return invItem;
+    }));
+  };
+
   const voidSale = (id: string) => {
+    const sale = sales.find(s => s.id === id);
+    if (!sale) return;
+
+    // Restore stock if voiding
+    setInventory(prev => prev.map(invItem => {
+      const soldItem = sale.items?.find(i => i.productId === invItem.id);
+      if (soldItem) {
+        return { ...invItem, stock: invItem.stock + soldItem.quantity };
+      }
+      return invItem;
+    }));
+
     const newSales = sales.map(s => s.id === id ? { ...s, status: 'Voided' } : s);
     setSales(newSales as SaleRecord[]);
     localStorage.setItem('nashwa_sales', JSON.stringify(newSales));
-    addNotification({ title: 'Transaction Voided', message: `Order ${id} has been marked as void.`, type: 'warning' });
+    addNotification({ title: 'Transaction Voided', message: `Order ${id} has been reversed and stock restored.`, type: 'warning' });
   };
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, allUsers, login, logout, updateGlobalUser }}>
       <SearchContext.Provider value={{ searchQuery, setSearchQuery }}>
         <SaleContext.Provider value={{ isNewSaleModalOpen, setIsNewSaleModalOpen }}>
           <SalesDataContext.Provider value={{ sales, addSale, voidSale }}>
-            <CurrencyContext.Provider value={{ currency, currencySymbol: getSymbol(currency), setCurrency }}>
-              <NotificationContext.Provider value={{ notifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearNotifications }}>
-                <HashRouter>
-                  <GlobalStyle />
-                  <Toast toast={activeToast} onClose={() => setActiveToast(null)} />
-                  <AppLayout>
-                    <Routes>
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/signup" element={<Signup />} />
-                      <Route path="/platform-control" element={<PrivateRoute allowedRoles={[UserRole.SUPER_ADMIN]}><SuperAdminPanel /></PrivateRoute>} />
-                      <Route path="/" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Dashboard /></PrivateRoute>} />
-                      <Route path="/inventory" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Inventory /></PrivateRoute>} />
-                      <Route path="/sales" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Sales /></PrivateRoute>} />
-                      <Route path="/customers" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Customers /></PrivateRoute>} />
-                      <Route path="/expenses" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Expenses /></PrivateRoute>} />
-                      <Route path="/reports" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Reports /></PrivateRoute>} />
-                      <Route path="/settings" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Settings /></PrivateRoute>} />
-                      <Route path="/portal" element={<PrivateRoute allowedRoles={[UserRole.CUSTOMER]}><CustomerPortal /></PrivateRoute>} />
-                      <Route path="*" element={<Navigate to="/" />} />
-                    </Routes>
-                  </AppLayout>
-                </HashRouter>
-              </NotificationContext.Provider>
-            </CurrencyContext.Provider>
+            <InventoryContext.Provider value={{ inventory, setInventory, deductStock, incrementStock }}>
+              <CurrencyContext.Provider value={{ currency, currencySymbol: getSymbol(currency), setCurrency }}>
+                <NotificationContext.Provider value={{ notifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearNotifications }}>
+                  <HashRouter>
+                    <GlobalStyle />
+                    <Toast toast={activeToast} onClose={() => setActiveToast(null)} />
+                    <AppLayout>
+                      <Routes>
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/signup" element={<Signup />} />
+                        <Route path="/platform-control" element={<PrivateRoute allowedRoles={[UserRole.SUPER_ADMIN]}><SuperAdminPanel /></PrivateRoute>} />
+                        <Route path="/" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Dashboard /></PrivateRoute>} />
+                        <Route path="/inventory" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Inventory /></PrivateRoute>} />
+                        <Route path="/sales" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Sales /></PrivateRoute>} />
+                        <Route path="/purchases" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Purchases /></PrivateRoute>} />
+                        <Route path="/customers" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Customers /></PrivateRoute>} />
+                        <Route path="/expenses" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Expenses /></PrivateRoute>} />
+                        <Route path="/reports" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Reports /></PrivateRoute>} />
+                        <Route path="/settings" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Settings /></PrivateRoute>} />
+                        <Route path="/portal" element={<PrivateRoute allowedRoles={[UserRole.CUSTOMER]}><CustomerPortal /></PrivateRoute>} />
+                        <Route path="*" element={<Navigate to="/" />} />
+                      </Routes>
+                    </AppLayout>
+                  </HashRouter>
+                </NotificationContext.Provider>
+              </CurrencyContext.Provider>
+            </InventoryContext.Provider>
           </SalesDataContext.Provider>
         </SaleContext.Provider>
       </SearchContext.Provider>

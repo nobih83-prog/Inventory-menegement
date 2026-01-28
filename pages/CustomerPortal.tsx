@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   ShoppingBag, 
   Star, 
@@ -12,14 +12,38 @@ import {
   Zap,
   Ticket,
   MapPin,
-  Download
+  Download,
+  X,
+  CheckCircle2,
+  Clock,
+  Copy,
+  Tag
 } from 'lucide-react';
 import { useAuth, useCurrency, useNotifications } from '../App';
+
+interface Deal {
+  id: string;
+  title: string;
+  description: string;
+  code: string;
+  discount: string;
+  expiry: string;
+  type: 'FLAT' | 'PERCENT' | 'GIFT';
+  isClaimed?: boolean;
+}
 
 const CustomerPortal: React.FC = () => {
   const { user, logout } = useAuth();
   const { currencySymbol } = useCurrency();
   const { addNotification } = useNotifications();
+
+  // Deals State
+  const [isDealsModalOpen, setIsDealsModalOpen] = useState(false);
+  const [deals, setDeals] = useState<Deal[]>([
+    { id: 'D1', title: 'Elite Morning Special', description: 'Get a free croissant with any large latte purchase.', code: 'MORNING-ELITE', discount: 'FREE GIFT', expiry: 'Ends in 2 days', type: 'GIFT' },
+    { id: 'D2', title: 'Loyalty Reward', description: 'Flat discount on your total bill for reaching 100 points.', code: 'LOYALTY-100', discount: '৳150 OFF', expiry: 'Ends in 14 days', type: 'FLAT' },
+    { id: 'D3', title: 'New Menu Trial', description: 'Exclusive 20% discount on our new seasonal blend.', code: 'SEASONAL-20', discount: '20% OFF', expiry: 'Ends Today', type: 'PERCENT' },
+  ]);
 
   const purchaseHistory = [
     { id: 'ORD-1025', date: 'May 12, 2024', amount: 45.00, items: 'Premium Coffee, Milk', points: 45 },
@@ -66,6 +90,16 @@ const CustomerPortal: React.FC = () => {
         type: 'error'
       });
     }
+  };
+
+  const claimDeal = (deal: Deal) => {
+    navigator.clipboard.writeText(deal.code);
+    setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, isClaimed: true } : d));
+    addNotification({
+      title: 'Voucher Claimed!',
+      message: `Code ${deal.code} copied to clipboard. Show it at the counter!`,
+      type: 'success'
+    });
   };
 
   return (
@@ -140,7 +174,10 @@ const CustomerPortal: React.FC = () => {
             <h3 className="text-2xl font-black tracking-tight leading-none mb-2">Exclusive Deals</h3>
             <p className="text-indigo-100 text-xs font-medium">Flash deals and member-only discounts just for you.</p>
           </div>
-          <button className="w-full py-4 bg-white text-indigo-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-xl">
+          <button 
+            onClick={() => setIsDealsModalOpen(true)}
+            className="w-full py-4 bg-white text-indigo-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-xl active:scale-95"
+          >
             View My Coupons
           </button>
         </div>
@@ -233,6 +270,100 @@ const CustomerPortal: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Exclusive Deals Modal */}
+      {isDealsModalOpen && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-300">
+            {/* Modal Header */}
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-indigo-600 text-white">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                  <Ticket size={24} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black tracking-tight">Available Coupons</h2>
+                  <p className="text-indigo-100 text-[10px] font-black uppercase tracking-widest">Exclusive Member Rewards</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsDealsModalOpen(false)}
+                className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
+              {deals.map((deal) => (
+                <div 
+                  key={deal.id}
+                  className={`group relative p-6 rounded-[2.5rem] border-2 transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-6 ${
+                    deal.isClaimed 
+                      ? 'bg-slate-50 border-slate-100 opacity-80' 
+                      : 'bg-white border-slate-100 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-50'
+                  }`}
+                >
+                  <div className="flex-1 text-center sm:text-left">
+                    <div className="flex items-center justify-center sm:justify-start space-x-3 mb-2">
+                      <span className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest ${
+                        deal.type === 'GIFT' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
+                      }`}>
+                        {deal.discount}
+                      </span>
+                      {deal.isClaimed && (
+                        <span className="flex items-center text-[9px] font-black text-emerald-600 uppercase tracking-widest">
+                          <CheckCircle2 size={10} className="mr-1" /> Claimed
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900 leading-tight">{deal.title}</h3>
+                    <p className="text-xs text-slate-500 font-medium mt-1">{deal.description}</p>
+                    <div className="flex items-center justify-center sm:justify-start mt-4 space-x-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                      <span className="flex items-center"><Clock size={12} className="mr-1.5" /> {deal.expiry}</span>
+                      <span className="flex items-center"><Tag size={12} className="mr-1.5" /> Single Use</span>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 w-full sm:w-auto">
+                    {deal.isClaimed ? (
+                      <div className="flex flex-col items-center space-y-2">
+                        <div className="px-6 py-3 bg-slate-100 rounded-2xl text-xs font-mono font-bold text-slate-500 border border-slate-200">
+                          {deal.code}
+                        </div>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(deal.code);
+                            addNotification({ title: 'Copied', message: 'Voucher code copied!', type: 'info' });
+                          }}
+                          className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline flex items-center"
+                        >
+                          <Copy size={10} className="mr-1" /> Copy Again
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => claimDeal(deal)}
+                        className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95"
+                      >
+                        Claim Voucher
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-8 bg-slate-50 border-t border-slate-100 text-center">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                New Deals Added Every Monday • Nashwa Loyalty
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

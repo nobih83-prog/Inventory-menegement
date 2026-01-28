@@ -48,6 +48,7 @@ const Customers: React.FC = () => {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
   
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -56,11 +57,44 @@ const Customers: React.FC = () => {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   
+  // New Customer Form State
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
+  
   // Audit Logs for deletions
   const [deleteLogs, setDeleteLogs] = useState<DeleteLog[]>([]);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Load data from localStorage
+  useEffect(() => {
+    const savedCustomers = localStorage.getItem('nashwa_customers');
+    if (savedCustomers) {
+      setCustomers(JSON.parse(savedCustomers));
+    } else {
+      // Initial default data if none exists
+      const defaults: CustomerRecord[] = [
+        { id: '1', name: 'John Smith', email: 'john@example.com', phone: '+1 234 567 890', spent: 1250.40, visits: 12, lastVisit: 'May 12, 2024', joinDate: 'Jan 10, 2023' },
+        { id: '2', name: 'Maria Garcia', email: 'maria.g@gmail.com', phone: '+1 987 654 321', spent: 840.00, visits: 8, lastVisit: 'May 15, 2024', joinDate: 'Feb 15, 2023' }
+      ];
+      setCustomers(defaults);
+      localStorage.setItem('nashwa_customers', JSON.stringify(defaults));
+    }
+
+    const savedLogs = localStorage.getItem('nashwa_customer_logs');
+    if (savedLogs) setDeleteLogs(JSON.parse(savedLogs));
+  }, []);
+
+  // Save to localStorage whenever customers change
+  useEffect(() => {
+    if (customers.length > 0) {
+      localStorage.setItem('nashwa_customers', JSON.stringify(customers));
+    }
+  }, [customers]);
+
+  useEffect(() => {
+    localStorage.setItem('nashwa_customer_logs', JSON.stringify(deleteLogs));
+  }, [deleteLogs]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -72,13 +106,36 @@ const Customers: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const [customers, setCustomers] = useState<CustomerRecord[]>([
-    { id: '1', name: 'John Smith', email: 'john@example.com', phone: '+1 234 567 890', spent: 1250.40, visits: 12, lastVisit: 'May 12, 2024', joinDate: 'Jan 10, 2023' },
-    { id: '2', name: 'Maria Garcia', email: 'maria.g@gmail.com', phone: '+1 987 654 321', spent: 840.00, visits: 8, lastVisit: 'May 15, 2024', joinDate: 'Feb 15, 2023' },
-    { id: '3', name: 'David Chen', email: 'dchen@techcorp.io', phone: '+1 555 123 456', spent: 342.15, visits: 3, lastVisit: 'Apr 28, 2024', joinDate: 'Mar 20, 2024' },
-    { id: '4', name: 'Sarah Wilson', email: 'sarah.w@outlook.com', phone: '+1 222 333 444', spent: 2150.80, visits: 24, lastVisit: 'May 14, 2024', joinDate: 'Dec 05, 2022' },
-    { id: '5', name: 'James Taylor', email: 'jtaylor@mail.com', phone: '+1 444 555 666', spent: 55.00, visits: 1, lastVisit: 'May 01, 2024', joinDate: 'May 01, 2024' },
-  ]);
+  const handleCreateCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name) return;
+
+    const newCustomer: CustomerRecord = {
+      id: Math.random().toString(36).substr(2, 9).toUpperCase(),
+      name: formData.name,
+      email: formData.email || 'N/A',
+      phone: formData.phone || 'N/A',
+      spent: 0,
+      visits: 0,
+      lastVisit: 'Never',
+      joinDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    };
+
+    setCustomers(prev => [newCustomer, ...prev]);
+    setIsSuccess(true);
+    addNotification({
+      title: 'Customer Added',
+      message: `${newCustomer.name} has been added to your directory.`,
+      type: 'success'
+    });
+
+    // Reset form and close modal after animation
+    setTimeout(() => {
+      setIsSuccess(false);
+      setIsAddModalOpen(false);
+      setFormData({ name: '', email: '', phone: '' });
+    }, 1500);
+  };
 
   const mockTransactions = [
     { id: 'ORD-102', date: 'May 15, 2024', amount: 45.20, items: 3, status: 'Success' },
@@ -183,11 +240,13 @@ const Customers: React.FC = () => {
   // Action Handlers
   const handleCall = (e: React.MouseEvent, phone: string) => {
     e.stopPropagation();
+    if (phone === 'N/A') return;
     window.location.href = `tel:${phone}`;
   };
 
   const handleEmail = (e: React.MouseEvent, email: string) => {
     e.stopPropagation();
+    if (email === 'N/A') return;
     window.location.href = `mailto:${email}`;
   };
 
@@ -523,7 +582,7 @@ const Customers: React.FC = () => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-4">AOV</p>
                   <div className="flex items-center space-x-3">
                     <TrendingUp size={24} className="text-indigo-500" />
-                    <span className="text-xl font-black text-slate-900">${(selectedCustomer.spent / selectedCustomer.visits).toFixed(2)}</span>
+                    <span className="text-xl font-black text-slate-900">${(selectedCustomer.visits > 0 ? selectedCustomer.spent / selectedCustomer.visits : 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -549,7 +608,7 @@ const Customers: React.FC = () => {
                         <th className="px-8 py-5">Order ID</th>
                         <th className="px-8 py-5">Transaction Date</th>
                         <th className="px-8 py-5">Items</th>
-                        <th className="px-8 py-5">Amount</th>
+                        <th className="px-10 py-5">Amount</th>
                         <th className="px-8 py-5 text-right">Status</th>
                       </tr>
                     </thead>
@@ -559,7 +618,7 @@ const Customers: React.FC = () => {
                           <td className="px-8 py-5 font-mono font-bold text-slate-900">{tx.id}</td>
                           <td className="px-8 py-5 font-medium">{tx.date}</td>
                           <td className="px-8 py-5 font-black">{tx.items} pk.</td>
-                          <td className="px-8 py-5 font-black text-slate-900">${tx.amount.toFixed(2)}</td>
+                          <td className="px-10 py-5 font-black text-slate-900">${tx.amount.toFixed(2)}</td>
                           <td className="px-8 py-5 text-right">
                             <div className="flex items-center justify-end space-x-3">
                               <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[9px] font-black uppercase tracking-tighter">
@@ -620,42 +679,59 @@ const Customers: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="p-10 space-y-8">
+                <form onSubmit={handleCreateCustomer} className="p-10 space-y-8">
                   <div className="space-y-2">
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">Full Identity</label>
-                    <input type="text" className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold placeholder:text-slate-300" placeholder="e.g. Robert Pattinson" />
+                    <input 
+                      type="text" 
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                      className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold placeholder:text-slate-300" 
+                      placeholder="e.g. Robert Pattinson" 
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">Email Channel</label>
-                      <input type="email" className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold placeholder:text-slate-300" placeholder="hello@domain.com" />
+                      <input 
+                        type="email" 
+                        value={formData.email}
+                        onChange={(e) => setFormData({...formData, email: e.target.value})}
+                        className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold placeholder:text-slate-300" 
+                        placeholder="hello@domain.com" 
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">Mobile Contact</label>
-                      <input type="tel" className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold placeholder:text-slate-300" placeholder="+1 000 000 000" />
+                      <input 
+                        type="tel" 
+                        value={formData.phone}
+                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                        className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold placeholder:text-slate-300" 
+                        placeholder="+1 000 000 000" 
+                      />
                     </div>
                   </div>
 
                   <div className="pt-4 flex items-center space-x-6">
                     <button 
+                      type="button"
                       onClick={() => setIsAddModalOpen(false)} 
                       className="flex-1 bg-slate-100 text-slate-600 py-5 rounded-[1.5rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-all"
                     >
                       Dismiss
                     </button>
                     <button 
-                      onClick={() => {
-                        setIsSuccess(true);
-                        setTimeout(() => { setIsSuccess(false); setIsAddModalOpen(false); }, 1500);
-                      }}
+                      type="submit"
                       className="flex-[2] bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-[11px] uppercase tracking-widest shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center active:scale-95"
                     >
                       <Save size={18} className="mr-2" />
                       Add to Directory
                     </button>
                   </div>
-                </div>
+                </form>
               </>
             )}
           </div>
