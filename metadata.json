@@ -1,0 +1,8 @@
+{
+  "name": "Nashwa - Local Business Manager",
+  "description": "A comprehensive, multi-user local business management platform named Nashwa for tracking inventory, sales, customers, expenses, and generating AI-powered business insights.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
