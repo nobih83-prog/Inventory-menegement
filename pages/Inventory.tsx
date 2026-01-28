@@ -3,10 +3,13 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Plus, Search, Filter, MoreVertical, Download, AlertCircle, 
   X, History, TrendingUp, Package, DollarSign, Save, 
-  Edit, Trash2, ArrowUpCircle, ArrowDownCircle, Maximize, Camera, Zap, CheckCircle2, AlertTriangle
+  Edit, Trash2, ArrowUpCircle, ArrowDownCircle, Maximize, Camera, Zap, CheckCircle2, AlertTriangle,
+  Printer,
+  Barcode
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useSearch, useCurrency, useNotifications } from '../App';
+import JsBarcode from 'jsbarcode';
 
 const BarcodeScanner: React.FC<{ onScan: (code: string) => void; onClose: () => void }> = ({ onScan, onClose }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -173,6 +176,71 @@ const Inventory: React.FC = () => {
     setActiveMenuId(null);
   };
 
+  const handlePrintLabel = (item: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    // We create an SVG container to render the barcode
+    const svgId = `barcode-${item.sku}`;
+    
+    const labelContent = `
+      <html>
+        <head>
+          <title>Print Label - ${item.name}</title>
+          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+          <style>
+            @page { size: 58mm 40mm; margin: 0; }
+            body { 
+              font-family: 'Inter', sans-serif; 
+              width: 58mm; 
+              height: 40mm; 
+              margin: 0; 
+              display: flex; 
+              flex-direction: column; 
+              align-items: center; 
+              justify-content: center;
+              text-align: center;
+              padding: 2mm;
+              box-sizing: border-box;
+            }
+            .name { font-size: 10pt; font-weight: 800; margin-bottom: 1mm; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; width: 100%; }
+            .price { font-size: 14pt; font-weight: 900; margin-bottom: 1mm; }
+            .barcode-container { width: 100%; height: 12mm; }
+            svg { width: 100%; height: 100%; }
+            .sku { font-size: 7pt; font-weight: 600; color: #666; margin-top: 1mm; }
+          </style>
+        </head>
+        <body>
+          <div class="name">${item.name}</div>
+          <div class="price">${currencySymbol}${item.price.toFixed(2)}</div>
+          <div class="barcode-container">
+            <svg id="${svgId}"></svg>
+          </div>
+          <div class="sku">${item.sku}</div>
+          <script>
+            window.onload = function() {
+              JsBarcode("#${svgId}", "${item.sku}", {
+                format: "CODE128",
+                width: 2,
+                height: 40,
+                displayValue: false,
+                margin: 0
+              });
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 500);
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(labelContent);
+    printWindow.document.close();
+    setActiveMenuId(null);
+  };
+
   // Actions
   const handleSaveItem = () => {
     if (isEditMode) {
@@ -272,7 +340,7 @@ const Inventory: React.FC = () => {
                 >
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
-                      <span className="font-bold text-slate-900 group-hover:text-indigo-600">{item.name}</span>
+                      <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{item.name}</span>
                       <span className="text-[10px] font-mono text-slate-400">{item.sku}</span>
                     </div>
                   </td>
@@ -292,18 +360,22 @@ const Inventory: React.FC = () => {
                         <MoreVertical size={18} />
                       </button>
                       {activeMenuId === item.id && (
-                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-[100] animate-in zoom-in-95 origin-top-right">
-                          <button onClick={(e) => { e.stopPropagation(); openEditModal(item); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                        <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-[100] animate-in zoom-in-95 origin-top-right">
+                          <button onClick={(e) => { e.stopPropagation(); openEditModal(item); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors">
                             <Edit size={14} className="mr-3 text-slate-400" /> Edit Item
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); openRestockModal(item, 'IN'); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                          <button onClick={(e) => { e.stopPropagation(); handlePrintLabel(item); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors">
+                            <Barcode size={14} className="mr-3 text-indigo-500" /> Print Label
+                          </button>
+                          <div className="h-px bg-slate-100 my-1 mx-2"></div>
+                          <button onClick={(e) => { e.stopPropagation(); openRestockModal(item, 'IN'); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors">
                             <ArrowUpCircle size={14} className="mr-3 text-emerald-500" /> Restock
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); openRestockModal(item, 'OUT'); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                          <button onClick={(e) => { e.stopPropagation(); openRestockModal(item, 'OUT'); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors">
                             <ArrowDownCircle size={14} className="mr-3 text-amber-500" /> Remove Stock
                           </button>
                           <div className="h-px bg-slate-100 my-1 mx-2"></div>
-                          <button onClick={(e) => { e.stopPropagation(); openDeleteModal(item); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50">
+                          <button onClick={(e) => { e.stopPropagation(); openDeleteModal(item); }} className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors">
                             <Trash2 size={14} className="mr-3 text-rose-400" /> Delete Item
                           </button>
                         </div>
@@ -433,8 +505,9 @@ const Inventory: React.FC = () => {
                  </div>
               </div>
               <div className="pt-4 flex justify-end space-x-3">
-                 <button onClick={() => openEditModal(selectedItem)} className="px-6 py-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 flex items-center"><Edit size={14} className="mr-2" /> Edit</button>
-                 <button onClick={() => openRestockModal(selectedItem, 'IN')} className="px-6 py-3 rounded-xl bg-indigo-600 text-white text-xs font-bold flex items-center"><ArrowUpCircle size={14} className="mr-2" /> Restock</button>
+                 <button onClick={() => openEditModal(selectedItem)} className="px-6 py-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 flex items-center transition-all hover:bg-slate-50"><Edit size={14} className="mr-2" /> Edit</button>
+                 <button onClick={() => handlePrintLabel(selectedItem)} className="px-6 py-3 rounded-xl border border-indigo-200 text-xs font-bold text-indigo-600 flex items-center transition-all hover:bg-indigo-50"><Barcode size={14} className="mr-2" /> Print Label</button>
+                 <button onClick={() => openRestockModal(selectedItem, 'IN')} className="px-6 py-3 rounded-xl bg-indigo-600 text-white text-xs font-bold flex items-center transition-all hover:bg-indigo-700 shadow-lg shadow-indigo-100"><ArrowUpCircle size={14} className="mr-2" /> Restock</button>
               </div>
             </div>
           </div>

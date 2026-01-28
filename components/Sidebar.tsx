@@ -86,8 +86,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
           <div className="mt-auto pt-6 border-t border-slate-800">
             <div className="flex items-center p-3 mb-4 rounded-lg bg-slate-800/50 border border-slate-700/50">
-              <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/50 flex items-center justify-center text-xs font-bold text-indigo-400">
-                {user?.email?.[0].toUpperCase() || 'U'}
+              <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/50 flex items-center justify-center text-xs font-bold text-indigo-400 overflow-hidden">
+                {user?.photo ? (
+                  <img src={user.photo} alt="User" className="w-full h-full object-cover" />
+                ) : (
+                  user?.email?.[0].toUpperCase() || 'U'
+                )}
               </div>
               <div className="ml-3 min-w-0">
                 <p className="text-sm font-semibold text-white truncate">{user?.businessName}</p>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { X, Bell, Info, CheckCircle, AlertTriangle, AlertCircle, ArrowRight } from 'lucide-react';
-import { User } from './types';
+import { User, UserRole, Sale } from './types';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +14,8 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import CustomerPortal from './pages/CustomerPortal';
+import SuperAdminPanel from './pages/SuperAdminPanel';
 import AiChatWidget from './components/AiChatWidget';
 import NewSaleModal from './components/NewSaleModal';
 
@@ -30,6 +32,13 @@ const GlobalStyle = () => (
     .animate-highlight {
       animation: highlight-blink 2s ease-in-out forwards;
       border-left: 4px solid #f59e0b !important;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #e2e8f0;
+      border-radius: 10px;
     }
   `}</style>
 );
@@ -59,7 +68,7 @@ export const useSearch = () => {
   return context;
 };
 
-// Sale Context
+// Sale UI Context
 interface SaleContextType {
   isNewSaleModalOpen: boolean;
   setIsNewSaleModalOpen: (open: boolean) => void;
@@ -68,6 +77,24 @@ const SaleContext = createContext<SaleContextType | undefined>(undefined);
 export const useSaleAction = () => {
   const context = useContext(SaleContext);
   if (!context) throw new Error('useSaleAction must be used within a SaleProvider');
+  return context;
+};
+
+// Global Sales Data Context
+export interface SaleRecord extends Sale {
+  customerName: string;
+  status: 'Success' | 'Voided';
+}
+
+interface SalesDataContextType {
+  sales: SaleRecord[];
+  addSale: (sale: SaleRecord) => void;
+  voidSale: (id: string) => void;
+}
+const SalesDataContext = createContext<SalesDataContextType | undefined>(undefined);
+export const useSalesData = () => {
+  const context = useContext(SalesDataContext);
+  if (!context) throw new Error('useSalesData must be used within a SalesDataProvider');
   return context;
 };
 
@@ -93,7 +120,8 @@ export interface Notification {
   timestamp: string;
   isRead: boolean;
   path?: string;
-  targetId?: string; // ID of the specific item to highlight
+  targetId?: string; 
+  isPrintAction?: boolean;
 }
 
 interface NotificationContextType {
@@ -127,7 +155,12 @@ const Toast: React.FC<{ toast: Notification | null; onClose: () => void }> = ({ 
 
   const handleAction = () => {
     if (toast.path) {
-      navigate(toast.path, { state: { highlightId: toast.targetId } });
+      navigate(toast.path, { 
+        state: { 
+          highlightId: toast.targetId, 
+          printItemId: toast.isPrintAction ? toast.targetId : undefined 
+        } 
+      });
     }
     onClose();
   };
@@ -157,22 +190,47 @@ const Toast: React.FC<{ toast: Notification | null; onClose: () => void }> = ({ 
   );
 };
 
-const PrivateRoute = ({ children }: { children?: React.ReactNode }) => {
+const PrivateRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles?: UserRole[] }) => {
   const { user } = useAuth();
-  return user ? <>{children}</> : <Navigate to="/login" />;
+  
+  if (!user) return <Navigate to="/login" />;
+  
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    if (user.role === UserRole.SUPER_ADMIN) return <Navigate to="/platform-control" />;
+    if (user.role === UserRole.CUSTOMER) return <Navigate to="/portal" />;
+    return <Navigate to="/" />;
+  }
+  
+  return <>{children}</>;
 };
 
 const AppLayout = ({ children }: { children?: React.ReactNode }) => {
   const location = useLocation();
+  const { user } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { isNewSaleModalOpen, setIsNewSaleModalOpen } = useSaleAction();
+  
   const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
+  const isSpecialPortal = location.pathname === '/portal' || location.pathname === '/platform-control';
 
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [location.pathname]);
 
   if (isAuthPage) return <>{children}</>;
+
+  if (isSpecialPortal || user?.role === UserRole.CUSTOMER || user?.role === UserRole.SUPER_ADMIN) {
+    return (
+      <div className="flex h-screen bg-slate-50 overflow-hidden relative text-slate-900">
+        <div className="flex-1 flex flex-col min-w-0">
+          <Header onMenuClick={() => {}} hideSidebarTrigger={true} />
+          <main className="flex-1 overflow-y-auto p-4 md:p-8">
+            {children}
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden relative text-slate-900">
@@ -195,6 +253,14 @@ const App: React.FC = () => {
   const [isNewSaleModalOpen, setIsNewSaleModalOpen] = useState(false);
   const [currency, setCurrencyState] = useState('BDT');
   const [activeToast, setActiveToast] = useState<Notification | null>(null);
+  
+  // Sales Ledger State
+  const [sales, setSales] = useState<SaleRecord[]>([
+    { id: 'ORD-101', customerName: 'Walk-in Customer', paymentMethod: 'CASH', totalAmount: 45.20, createdAt: 'May 15, 2024 14:22', status: 'Success', items: [], userId: 'admin-123' },
+    { id: 'ORD-102', customerName: 'John Smith', paymentMethod: 'CARD', totalAmount: 12.00, createdAt: 'May 15, 2024 13:05', status: 'Success', items: [], userId: 'admin-123' },
+    { id: 'ORD-103', customerName: 'Maria Garcia', paymentMethod: 'TRANSFER', totalAmount: 350.00, createdAt: 'May 15, 2024 11:45', status: 'Success', items: [], userId: 'admin-123' }
+  ]);
+
   const [notifications, setNotifications] = useState<Notification[]>([
     {
       id: '1',
@@ -204,17 +270,7 @@ const App: React.FC = () => {
       timestamp: new Date().toISOString(),
       isRead: false,
       path: '/inventory',
-      targetId: '1' // ID for Premium Coffee Beans
-    },
-    {
-      id: '2',
-      title: 'New Sale',
-      message: 'A new sale of ৳1,250.40 was just recorded.',
-      type: 'success',
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      isRead: false,
-      path: '/sales',
-      targetId: 'ORD-101' // ID for First Order
+      targetId: '1'
     }
   ]);
 
@@ -223,6 +279,8 @@ const App: React.FC = () => {
     if (savedUser) setUser(JSON.parse(savedUser));
     const savedCurrency = localStorage.getItem('nashwa_currency');
     if (savedCurrency) setCurrencyState(savedCurrency);
+    const savedSales = localStorage.getItem('nashwa_sales');
+    if (savedSales) setSales(JSON.parse(savedSales));
   }, []);
 
   const login = (userData: User) => {
@@ -260,7 +318,6 @@ const App: React.FC = () => {
     setNotifications(prev => [newNotif, ...prev]);
     setActiveToast(newNotif);
     
-    // Auto clear toast after 8 seconds
     setTimeout(() => {
       setActiveToast(prev => prev?.id === newNotif.id ? null : prev);
     }, 8000);
@@ -278,34 +335,51 @@ const App: React.FC = () => {
     setNotifications([]);
   };
 
+  const addSale = (sale: SaleRecord) => {
+    const newSales = [sale, ...sales];
+    setSales(newSales);
+    localStorage.setItem('nashwa_sales', JSON.stringify(newSales));
+  };
+
+  const voidSale = (id: string) => {
+    const newSales = sales.map(s => s.id === id ? { ...s, status: 'Voided' } : s);
+    setSales(newSales as SaleRecord[]);
+    localStorage.setItem('nashwa_sales', JSON.stringify(newSales));
+    addNotification({ title: 'Transaction Voided', message: `Order ${id} has been marked as void.`, type: 'warning' });
+  };
+
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
       <SearchContext.Provider value={{ searchQuery, setSearchQuery }}>
         <SaleContext.Provider value={{ isNewSaleModalOpen, setIsNewSaleModalOpen }}>
-          <CurrencyContext.Provider value={{ currency, currencySymbol: getSymbol(currency), setCurrency }}>
-            <NotificationContext.Provider value={{ notifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearNotifications }}>
-              <HashRouter>
-                <GlobalStyle />
-                <Toast toast={activeToast} onClose={() => setActiveToast(null)} />
-                <AppLayout>
-                  <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/signup" element={<Signup />} />
-                    <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-                    <Route path="/inventory" element={<PrivateRoute><Inventory /></PrivateRoute>} />
-                    <Route path="/sales" element={<PrivateRoute><Sales /></PrivateRoute>} />
-                    <Route path="/customers" element={<PrivateRoute><Customers /></PrivateRoute>} />
-                    <Route path="/expenses" element={<PrivateRoute><Expenses /></PrivateRoute>} />
-                    <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
-                    <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
-                    <Route path="*" element={<Navigate to="/" />} />
-                  </Routes>
-                </AppLayout>
-              </HashRouter>
-            </NotificationContext.Provider>
-          </CurrencyContext.Provider>
+          <SalesDataContext.Provider value={{ sales, addSale, voidSale }}>
+            <CurrencyContext.Provider value={{ currency, currencySymbol: getSymbol(currency), setCurrency }}>
+              <NotificationContext.Provider value={{ notifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearNotifications }}>
+                <HashRouter>
+                  <GlobalStyle />
+                  <Toast toast={activeToast} onClose={() => setActiveToast(null)} />
+                  <AppLayout>
+                    <Routes>
+                      <Route path="/login" element={<Login />} />
+                      <Route path="/signup" element={<Signup />} />
+                      <Route path="/platform-control" element={<PrivateRoute allowedRoles={[UserRole.SUPER_ADMIN]}><SuperAdminPanel /></PrivateRoute>} />
+                      <Route path="/" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Dashboard /></PrivateRoute>} />
+                      <Route path="/inventory" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Inventory /></PrivateRoute>} />
+                      <Route path="/sales" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Sales /></PrivateRoute>} />
+                      <Route path="/customers" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER, UserRole.STAFF]}><Customers /></PrivateRoute>} />
+                      <Route path="/expenses" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Expenses /></PrivateRoute>} />
+                      <Route path="/reports" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Reports /></PrivateRoute>} />
+                      <Route path="/settings" element={<PrivateRoute allowedRoles={[UserRole.OWNER, UserRole.MANAGER]}><Settings /></PrivateRoute>} />
+                      <Route path="/portal" element={<PrivateRoute allowedRoles={[UserRole.CUSTOMER]}><CustomerPortal /></PrivateRoute>} />
+                      <Route path="*" element={<Navigate to="/" />} />
+                    </Routes>
+                  </AppLayout>
+                </HashRouter>
+              </NotificationContext.Provider>
+            </CurrencyContext.Provider>
+          </SalesDataContext.Provider>
         </SaleContext.Provider>
       </SearchContext.Provider>
     </AuthContext.Provider>

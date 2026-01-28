@@ -1,8 +1,10 @@
 
 export enum UserRole {
+  SUPER_ADMIN = 'SUPER_ADMIN',
   OWNER = 'OWNER',
   MANAGER = 'MANAGER',
-  STAFF = 'STAFF'
+  STAFF = 'STAFF',
+  CUSTOMER = 'CUSTOMER'
 }
 
 export interface User {
@@ -10,6 +12,30 @@ export interface User {
   email: string;
   businessName: string;
   role: UserRole;
+  name?: string;
+  phone?: string;
+  photo?: string;
+}
+
+export interface LoginRecord {
+  id: string;
+  userId: string;
+  userEmail: string;
+  businessName: string;
+  role: UserRole;
+  timestamp: string;
+  ipAddress: string;
+}
+
+export interface BusinessRegistration {
+  id: string;
+  name: string;
+  ownerName: string;
+  ownerEmail: string;
+  totalSales: number;
+  customerCount: number;
+  status: 'ACTIVE' | 'SUSPENDED';
+  joinedAt: string;
 }
 
 export interface InventoryItem {
@@ -52,11 +78,4 @@ export interface Expense {
   amount: number;
   category: string;
   date: string;
-}
-
-export interface BusinessSettings {
-  taxRate: number;
-  currency: string;
-  address: string;
-  logoUrl?: string;
 }
