@@ -13,7 +13,9 @@ import {
   History, 
   Trash2, 
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Tag,
+  Zap
 } from 'lucide-react';
 import { useSearch, useCurrency, useNotifications, useInventoryData } from '../App';
 
@@ -29,19 +31,25 @@ interface PurchaseRecord {
   date: string;
 }
 
+const CATEGORIES = ['Coffee', 'Dairy', 'Supplies', 'Bakery', 'Other'];
+
 const Purchases: React.FC = () => {
   const { searchQuery, setSearchQuery } = useSearch();
   const { currencySymbol } = useCurrency();
   const { addNotification } = useNotifications();
-  const { inventory, incrementStock } = useInventoryData();
+  const { inventory, setInventory, incrementStock } = useInventoryData();
 
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isAddingNewItem, setIsAddingNewItem] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
     itemId: '',
+    newItemName: '',
+    newItemSku: '',
+    newItemCategory: 'Supplies',
     supplier: '',
     quantity: 1,
     unitCost: 0,
@@ -75,18 +83,43 @@ const Purchases: React.FC = () => {
 
   const handleSavePurchase = (e: React.FormEvent) => {
     e.preventDefault();
-    const selectedItem = inventory.find(i => i.id === formData.itemId);
-    if (!selectedItem) {
-      alert("Please select a valid item from inventory");
+    
+    let targetItem;
+    let itemId = formData.itemId;
+
+    // Logic for Quick-Adding a new item to inventory
+    if (isAddingNewItem) {
+      if (!formData.newItemName) return;
+      
+      const newInventoryItem = {
+        id: Math.random().toString(36).substr(2, 9).toUpperCase(),
+        name: formData.newItemName,
+        sku: formData.newItemSku || `SKU-${Math.floor(Math.random() * 10000)}`,
+        category: formData.newItemCategory,
+        price: formData.unitCost * 1.5, // Default markup guess
+        stock: 0, // Will be updated by incrementStock below
+        minStockLevel: 5,
+        lastRestocked: formData.date
+      };
+
+      setInventory(prev => [newInventoryItem, ...prev]);
+      targetItem = newInventoryItem;
+      itemId = newInventoryItem.id;
+    } else {
+      targetItem = inventory.find(i => i.id === formData.itemId);
+    }
+
+    if (!targetItem) {
+      alert("Please select or create an item first.");
       return;
     }
 
     const totalCost = formData.quantity * formData.unitCost;
     const newPurchase: PurchaseRecord = {
       id: `PUR-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-      itemId: formData.itemId,
-      itemName: selectedItem.name,
-      sku: selectedItem.sku,
+      itemId: itemId,
+      itemName: targetItem.name,
+      sku: targetItem.sku,
       supplier: formData.supplier,
       quantity: formData.quantity,
       unitCost: formData.unitCost,
@@ -98,11 +131,11 @@ const Purchases: React.FC = () => {
     setPurchases(prev => [newPurchase, ...prev]);
     
     // SYNC: Increment Inventory Stock
-    incrementStock(formData.itemId, formData.quantity);
+    incrementStock(itemId, formData.quantity);
 
     addNotification({
-      title: 'Purchase Recorded',
-      message: `Stock for ${selectedItem.name} increased by ${formData.quantity}.`,
+      title: isAddingNewItem ? 'New Item & Purchase Logged' : 'Purchase Recorded',
+      message: `${targetItem.name} stock increased by ${formData.quantity}.`,
       type: 'success'
     });
 
@@ -110,8 +143,12 @@ const Purchases: React.FC = () => {
     setTimeout(() => {
       setIsSuccess(false);
       setIsModalOpen(false);
+      setIsAddingNewItem(false);
       setFormData({
         itemId: '',
+        newItemName: '',
+        newItemSku: '',
+        newItemCategory: 'Supplies',
         supplier: '',
         quantity: 1,
         unitCost: 0,
@@ -289,20 +326,70 @@ const Purchases: React.FC = () => {
                   </button>
                 </div>
 
-                <form onSubmit={handleSavePurchase} className="p-10 space-y-8">
+                <form onSubmit={handleSavePurchase} className="p-10 space-y-6">
+                  
+                  {/* Item Selection with Quick Add Toggle */}
                   <div className="space-y-2">
-                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">Select Inventory Item</label>
-                    <select 
-                      required
-                      value={formData.itemId}
-                      onChange={(e) => setFormData({...formData, itemId: e.target.value})}
-                      className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold bg-white"
-                    >
-                      <option value="">Choose item...</option>
-                      {inventory.map(item => (
-                        <option key={item.id} value={item.id}>{item.name} ({item.sku})</option>
-                      ))}
-                    </select>
+                    <div className="flex items-center justify-between px-1">
+                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                        {isAddingNewItem ? 'New Item Details' : 'Select Inventory Item'}
+                      </label>
+                      <button 
+                        type="button" 
+                        onClick={() => setIsAddingNewItem(!isAddingNewItem)}
+                        className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline flex items-center"
+                      >
+                        {isAddingNewItem ? (
+                          <><X size={12} className="mr-1" /> Use Existing</>
+                        ) : (
+                          <><Plus size={12} className="mr-1" /> Create New Item</>
+                        )}
+                      </button>
+                    </div>
+
+                    {isAddingNewItem ? (
+                      <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                        <div className="relative">
+                          <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                          <input 
+                            required
+                            type="text" 
+                            placeholder="Product Name (e.g. Green Tea)"
+                            value={formData.newItemName}
+                            onChange={(e) => setFormData({...formData, newItemName: e.target.value})}
+                            className="w-full pl-12 pr-6 py-4 rounded-2xl border border-indigo-200 bg-indigo-50/30 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <input 
+                            type="text" 
+                            placeholder="SKU Code"
+                            value={formData.newItemSku}
+                            onChange={(e) => setFormData({...formData, newItemSku: e.target.value.toUpperCase()})}
+                            className="w-full px-6 py-3 rounded-xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 outline-none text-xs font-bold uppercase"
+                          />
+                          <select 
+                            value={formData.newItemCategory}
+                            onChange={(e) => setFormData({...formData, newItemCategory: e.target.value})}
+                            className="w-full px-6 py-3 rounded-xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 outline-none text-xs font-bold bg-white"
+                          >
+                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    ) : (
+                      <select 
+                        required
+                        value={formData.itemId}
+                        onChange={(e) => setFormData({...formData, itemId: e.target.value})}
+                        className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold bg-white"
+                      >
+                        <option value="">Choose item...</option>
+                        {inventory.map(item => (
+                          <option key={item.id} value={item.id}>{item.name} ({item.sku})</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div className="space-y-2">
